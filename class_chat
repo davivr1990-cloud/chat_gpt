@@ -1,0 +1,143 @@
+class GPT:
+    def __init__(self):
+        self.client=OpenAI()
+        self.model='gpt-4.1-mini'
+        self.instructions='você é o Chat GPT'
+        self.tools=[{'type':'web_search'}]
+        self.tools_list=[{'type':'web_search'}]
+        self.memory=[]
+
+    def _create_image_file(self,file_path):
+        with open(file_path,'rb') as f:
+            result = self.client.files.create(
+                file=f,
+                purpose='vision'
+            )
+        return result.id
+
+    def _create_text_file(self,file_path):
+        with open(file_path,'rb') as f:
+            result = self.client.files.create(
+                file=f,
+                purpose='user_data'
+            )
+
+        return result.id
+
+    def _stream_response(self,response):
+        resposta=''
+        for token in response:
+            if token.type=='response.output_text.delta':
+                resposta+=token.delta
+                print(token.delta,end='')
+            
+        return resposta
+
+    def _content(self,prompt,images,text_file):
+
+        content=[{'type':'input_text','text':prompt}]
+
+        if images is not None:
+            add_image={'type':'input_image'}
+            for image in images:
+                input_image={'image_url':image} if 'https://' in image else {'file_id':self._create_image_file(image)}
+
+                add_image.update(input_image)
+
+            content.append(add_image)
+
+        if text_file is not None:
+
+            add_file={'type':'input_file','file_id':self._create_text_file(text_file)}
+            content.append(add_file)
+
+        self.memory.append({'role':'user','content':content})
+
+    def _stream_chat(self,model='gpt-4.1-mini',tools=[{'type':'web_search'}]):
+        response=self.client.responses.create(
+            model=model,
+            instructions=self.instructions,
+            input=self.memory,
+            tools=tools,
+            stream=True
+        )
+
+        return response
+
+    def _no_stream_chat(self,model='gpt-4.1-mini',tools=[{'type':'web_search'}]):
+        response=self.client.responses.create(
+            model=model,
+            instructions=self.instructions,
+            input=self.memory,
+            tools=tools,
+            stream=False
+        )
+
+        return response
+
+    def _parse_chat(self,classe,instructions,model='gpt-4.1-mini',tools=[{'type':'web_search'}]):
+        response=self.client.responses.parse(
+            model=model,
+            instructions=instructions,
+            input=self.memory,
+            tools=tools,
+            stream=False,
+            text_format=classe
+        )
+
+        return response
+
+
+class Chat(GPT):
+
+    def chat(self,prompt,images=None,text_file=None,k=3):
+
+        super()._content(prompt,images,text_file)
+        response=super()._stream_chat()
+        resposta=self._stream_response(response)
+
+        self.memory.append({'role':'assistant','content':resposta})
+        self.memory=self.memory[-2*k:]
+
+        return resposta
+    
+    def chat_codex(self,prompt,images=None,text_file=None,k=3):
+
+        super()._content(prompt,images,text_file)
+        response=super()._stream_chat(model='codex-mini-latest',tools=[])
+        resposta=self._stream_response(response)
+
+        self.memory.append({'role':'assistant','content':resposta})
+        self.memory=self.memory[-2*k:]
+
+        return resposta
+
+    def chat_code_parse(self,prompt,images=None,text_file=None,k=3):
+
+        class CodeOutput(BaseModel):
+            mensagem:str=Field(description='mensagens gerais')
+            codigo:str=Field(description='apenas código bruto. Deve ser diretamente executável via exec() do python')
+
+        super()._content(prompt,images,text_file)
+        response=super()._parse_chat(model='codex-mini-latest',tools=[],classe=CodeOutput,instructions='Você retorna apenas o código como resposta')
+        resposta=response.output_parsed.model_dump()['codigo']
+
+        self.memory.append({'role':'assistant','content':resposta})
+        self.memory=self.memory[-2*k:]
+
+        print(resposta)
+
+        return resposta
+
+    def chat_gpt5(self,prompt,images=None,text_file=None,k=3):
+
+        super()._content(prompt,images,text_file)
+        response=super()._no_stream_chat(model='gpt-5-mini')
+        resposta=response.output_text
+
+        self.memory.append({'role':'assistant','content':resposta})
+        self.memory=self.memory[-2*k:]
+
+        print(resposta)
+
+        return resposta
