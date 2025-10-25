@@ -3,6 +3,7 @@ from langchain.document_loaders.youtube import YoutubeLoader
 from pydantic import BaseModel,Field
 
 
+
 class GPT:
     def __init__(self):
         self.client=OpenAI()
@@ -156,7 +157,7 @@ class Chat(GPT):
         model=classe_pydatic
         
         content=super()._content(prompt,images,text_file,memory=False,k=k)
-        response=super()._parse_chat(content,model='codex-mini-latest',tools=[],classe=model,instructions='Você retorna apenas o código como resposta')
+        response=super()._parse_chat(content,model=self.model,tools=[],classe=model,instructions=self.instructions)
         resposta=response.output_parsed.model_dump()
 
         print(resposta)
