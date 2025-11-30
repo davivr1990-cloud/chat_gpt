@@ -1,0 +1,185 @@
+from classes_todas.classes import GPT,Chat
+from pydantic import BaseModel,Field
+
+
+
+class AvaliacaoImagem(BaseModel):
+    nota:int = Field(description='nota de 0 a 100 que avalia a probabilidade da imagem ser real')
+    avaliacao:str = Field(description='avaliação detalhada do por quê a imagem não atingiu a nota de 100, se for o caso')
+    sugestoes:str = Field('Caso a imagem não tenha atingido a nota 100, com base na sua avaliação, diga o que mudaria na imagem para que ficasse 100 porcento real, mantendo o estilo da mesma - neste caso, assuma que a imagem foi gerada por IA')
+    prompt_novo:str = Field(description='Caso a imagem não tenha atingido a nota 100, gere um prompt modificando a imagem para que fique 100 porcento fotorealista, mantendo o estilo da imagem. Considere que a imagem anterior avaliada será usada como referência para modificações no momento da geração da nova imagem - referencie a imagem anterior como "@img1". Gere o prompt em inglês')
+
+class Modelo(BaseModel):
+    caracteristicas_faciais:str = Field(description='características faciais da modelo')
+    tipo_cabelo:str = Field(description='tipo de cabelo da modelo: cacheado, liso, ondulado, crespo etc')
+    cor_cabelo:str = Field(description='cor do cabelo da modelo: loiro,preto,castranho, colorido etc')
+    corte_cabelo:str = Field(description='qual o corte de cabelo da modelo')
+    penteado:str = Field(description='como é o penteado da modelo')
+    cor_pele:str = Field(description='cor de pele da modelo, incluindo tonalidade')
+    corpo:str = Field(description='características físicas da modelo: plus size, magra, normal. Características gerais ou específicas de interesse também sobre o físico da modelo')
+    naturalizador:str = Field(description='considere textura da pele para que a modelo fique natural, sem parecer gerada por IA')
+
+class TecnicaFotografica(BaseModel):
+    luz:str = Field(description='qual a fonte da luz, direção e nível de dureza ou suavidade(difusão) da luz')
+    composicao_framing:str = Field(description='Qual o enquadramento? Wide shot/medium shot/closeup/extremecloseup/enquadramento central/simétrico/rule-of-thirds?')
+    composicao_layout:str = Field(description='qual o posicionamento relativo entre os componentes da imagem? Rule of thirds/Golden Ratio/Balance/Asymmetrical balance/Negative space/Leading lines/Foreground / midground / background')
+    composicao_pov:str = Field(description='qual o ponto de onde a câmera observa? Eye level / High angle/Low angle/Dutch angle/Over-the-shoulder etc')
+    composicao_plano:str = Field(description='qual o plano da câmera? long shot, medium shot, tight shot, macro etc')
+    lente:str = Field(description='qual a lente usada. 35mm / 50mm / 85mm etc')
+    estilo_fotografico:str = Field(description='qual o estilo fotográfico que tem a ver com a imagem: noir, fine art, fotografia publicitaria, retrato , paisagem, documental, etc')
+
+class PosProducao(BaseModel):
+    granulacao_percenutal:str = Field(description='Nível de granulação da imagem, em percentual. Intervalo: 0 a 100')
+    exposicao_stops:float = Field(description = 'nível de luminosidade medida em stops')
+    contraste_percentual:int = Field(description='valor percentual do nível de contraste. Intervalo: de 0 a 100')
+    sombras_percentual:int = Field(description='em valor percentual. Intervalo: de -100 a 100')
+    temperatura_kelvin:int = Field(description='temperatura em Kelvin (K). Exemplos: Luz do dia ~5200; luz quente 2800 - 4000; luz fria 6000-7000')
+    matiz_grau:int = Field(description='Matiz/Hue medido em graus no círculo cromático. Intervalo: 0 a 360')
+    saturacao_percentual:int = Field(description='Nível da saturação, em percentual. Intervalo de -100 a 100')
+    tone_curve_rgb:str = Field(description='definição dos eixos X (tons originais) e Y (tons ajustados), geralmente 0–255 para cada canal RGB')
+    claridade_percentual:int = Field(description='Medidas técnicas: geralmente percentuais (-100 a +100), ajustes sutis de +10 a +30 porcento são comuns.')
+    vinheta:str = Field(description='escurece ou clareia bordas para direcionar atenção. Intensidade em percentual')
+    desfoque_seletivo:str = Field(description='simula profundidade de campo ou efeito artístico. intensidade em percentual ou pixels; raio para alcance do efeito.')
+
+class BuscaGoogle(BaseModel):
+    busca:str = Field(description='palavra ou expressão de busca no google')
+
+class BuscasGoogle(BaseModel):
+    lista_buscas:list[BuscaGoogle] = Field(description='lista de palavras ou expressões de buscas no google')
+
+class Estilo(BaseModel):
+    estilo:str = Field(description='nome do estilo')
+
+class Estilos(BaseModel):
+    estilos:list[Estilo] = Field(description='lista de nomes dos estilos')
+
+class Marca(BaseModel):
+    marca:str = Field(description='marca de moda')
+
+class Marcas(BaseModel):
+    marcas:list[Marca] = Field(description='lista de marcas de moda')
+
+
+class EstilosModa:
+
+    def __init__(self,style):    
+        self.style = style
+        self.chat = Chat()
+
+        with open(r'prompts\criacao_imagens.txt','r',encoding='utf-8') as f:
+            self.instructions_img=f.read()
+
+        with open(r'prompts\estilo_fotografico.txt','r',encoding='utf-8') as f:
+            self.estilo_fotografico = f.read()
+        
+        with open(r'prompts\prompt_seedream_imagens.txt','r',encoding='utf-8') as f:
+            self.doc = f.read()
+
+    def pesquisa_google(self,pesquisa_google='pesquise na internet marcas de moda que vendem roupas no estilo de interesse'):
+        style = self.style
+
+        pesquisa_estilos = self.chat.chat_parse(f'dado o tema informado, por quais estilos de moda devo procurar na internet? Estilo: {style}',Estilos)
+
+        estilos = [estilo['estilo'] for estilo in pesquisa_estilos['estilos']]
+
+        lista_pesquisa = []
+        for i in range(len(estilos)):
+            pesquisa_marcas = self.chat.chat_parse(f'{pesquisa_google}. Estilo: {estilos[i]}',Marcas)
+
+            marcas = [marca['marca'] for marca in pesquisa_marcas['marcas']]
+
+            lista_pesquisa.extend(marcas)
+
+
+        lista_pesquisa_marcas = [f'marca de roupa {pesquisa} site' for pesquisa in list(set(lista_pesquisa))]
+
+        for pesquisa in lista_pesquisa_marcas:
+            print(pesquisa)
+
+    def geracao_imagens(self):
+        self.chat = Chat()
+        style = self.style
+
+        self.chat.instructions = 'você é um diretor de arte e criador de modelos/pessoas de IA. Seu foco é criar algo realista, natural, artístico e ao mesmo tempo "fotografável". Suas criações devem ser realistas e naturais o suficiente para que não haja um estranhamento ou senso de que é artificial'
+
+        person = self.chat.chat(f'Você imagina e cria uma modelo que combine perfeitamente com o estilo informado. Seu foco exclusivo é na aparência física da modelo, como cor dos olhos, cabelo, como o cabelo está, cor de pele, etc. Ignore roupas, acessórios, cenário etc, foque apenas e exclusivamente na modelo. Responda como um prompt que será usado para criação de imagem, em um parágrafo curto. Estilo da modelo: {style}',print_response=False)
+
+        composition = self.chat.chat(f'descreva o cenário, composição de cena e pose da modelo que combinem perfeitamente com o estilo informado. Foque apenas e exclusivamente na pose da modelo (sem fazer referências a como ela é), na interação da modelo com o cenário e na composição do cenário. Estilo: {style}. Responda em um único parágrafo curto',print_response=False)
+
+        self.chat.instructions = self.estilo_fotografico
+        photo_style = self.chat.chat(f'descreva o estilo fotográfico: {style}',print_response=False)
+
+        self.chat.instructions=self.instructions_img
+        prompt_imagem = self.chat.chat(f'Quero uma imagem realista e cinematográfica no estilo: {style}. Modelo: {person}. Composição: {composition}. Estilo fotográfico: {photo_style}. Considere que a modelo está vestindo a roupa específica que será anexada posteriormente e faça referência à roupa dela no prompt como "@img1". Seu prompt deve ser em um parágrafo e deve considerar que a imagem será utilizada por uma marca de moda. Equilibre a criatividade com um apelo editorial/comercial. A imagem deve ser uma foto realista e crível',print_response=False)
+
+        print(prompt_imagem)
+
+    def geracao_imagem2(self):
+        self.chat = Chat()
+        chat = self.chat
+        style = self.style
+
+        chat.instructions = f'você é um agente de modelos e está contratando uma modelo para um ensaio no estilo: {style}'
+        modelo = chat.chat_parse('modelo',Modelo)
+
+        chat.instructions = 'você é um diretor de fotografia'
+        composicao = chat.chat(f'explique como deve ser a composição da imagem, incluindo como é enquadramento da modelo e interação com o cenário da imagem anexa. Explore a pose da modelo e a interação com o cenário de forma coerente e que represente bem o estilo estético desejado. Seu objetivo é fazer uma foto que represente o estilo estético: {style}. Para que você tenha uma referência, considere que a modelo estará usando a roupa da imagem 1 e estará no cenário da imagem 2. Responda em um parágrafo',[r'imagens\@img2.png'],print_response=False)
+
+        chat = Chat()
+        chat.instructions = 'você é um fotógrafo profissional focado exclusivamente em técnicas fotográficas'
+        prompt = f'''
+        quero uma imagem com o estilo estético: {style}. Considere a composição: {composicao} 
+        '''
+        tecnica_fotografica = chat.chat_parse(prompt,TecnicaFotografica)
+
+        chat = Chat()
+        chat.instructions = f'Você é um assistente que adapta o conteúdo apresentado para o formato de prompt, conforme as orientações: {self.doc}. Seu objetivo é gerar o prompt perfeito para criar uma imagem fotorealista. Sua resposta é apenas o prompt, em inglês.'
+        prompt_geracao_imagem = chat.chat(f'Elabore um prompt combinando os elementos de forma coesa e coerente. Modelo: {modelo}. Composição: {composicao}. Técnica fotográfica: {tecnica_fotografica}. A modelo estará usando uma roupa específica, que será incluída como referencia no momento da geração da imagem - referencie a roupa que a modelo estará usando como "@img1". Ela estará no cenário que também será referenciado no momento da geração da imagem - referencie o cenário como "@img2".',print_response=False)
+
+        return prompt_geracao_imagem
+        # print(prompt_geracao_imagem)
+
+    def pos_producao(self):
+        style = self.style
+
+        self.chat.instructions = 'você é um profissional da fotografia especialista em pós produção, especificamente em color grading e estilização/estética fotográfica'
+        especificacoes = self.chat.chat_parse(f'quero trabalhar a pós produção da minha fotografia para que transmita emoções no estilo: {style}. Gere as especificações técnicas',PosProducao)
+
+        self.chat.instructions = 'você é um assistente especializado em que gerar prompts para pós produção de fotografias, com base nas informações especificadas. Responda apenas com o prompt, em inglês'
+        pos_producao = self.chat.chat(f'Gere um prompt com base nas especificações técnicas: {especificacoes}.',k=0,print_response=False)
+
+        self.chat.instructions = ''
+
+        return pos_producao
+    
+    def geracao_imagem_final(self):
+
+        prompt_img = self.geracao_imagem2()
+        prompt_pos_producao = self.pos_producao()
+
+        print(f'{prompt_img}. {prompt_pos_producao}')
+
+    def feedback_img(self):
+        self.chat = Chat()
+        self.chat.instructions = 'Você é um avaliador que verifica se a imagem foi gerada por IA ou não. Sua resposta deve ser em probabilidade da imagem ser real, de 0 a 100. Após a estimativa de probabilidade, caso não seja 100, explique o por quê acredita que a imagem não é uma fotografia real.'
+        feedback = self.chat.chat('verifique a imagem',[r'imagens\@img1.png'],print_response=False)
+
+        chat = Chat()
+        person = chat.chat(f'com base no feedback sobre a imagem, pense no que você mudaria em termos de pose, composição, modelo/personagem, entre outros elementos, para que a imagem ficasse fotorealista. Com base em suas próprias considerações, gere um prompt para criação de uma nova imagem. Leve em consideração que a modelo estará usando uma roupa específica que será referenciada no momento da geração da imagem - e referencie a roupa como @img1. Responda apenas com o prompt, em inglês. Feedback: {feedback}',print_response=False)
+
+        print(f'{feedback}\n\n{person}')
+
+    def feedback_img2(self):
+        chat = Chat()
+        chat.instructions = 'Você é um avaliador e crítico de imagens. Você discerne sobre a imagem ser uma foto real ou não. Seja bastante criterioso'
+        avaliacao = chat.chat_parse('Avalie a imagem',AvaliacaoImagem,images=[r'imagens\@img3.png'])
+
+        print(avaliacao['nota'])
+        print(avaliacao['prompt_novo'])
+
+    def geracao_copy(self):
+        style = self.style
+
+        self.chat = Chat()
+        self.chat.instructions = 'você é um copywriter profissional. Seu estilo de comunicação é humano e mais sutil e evita passar um tom vendedor. Seu tom é mais artístico e suas copys têm o objetivo de gerar identificação em usuários do instagram com o estilo proposto. Você utiliza elementos históricos e significados para explicar o estilo ou conceito.'
+        copy = self.chat.chat(f'faça uma copy para o instagram, para o estilo: {style}. A ideia é explicar sobre o estilo de forma artística e conceitual. Responda com uma copy humanizada e curta. Responda apenas com a copy')
