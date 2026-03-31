@@ -1,0 +1,189 @@
+from openai import OpenAI
+from langchain.document_loaders.youtube import YoutubeLoader
+from pydantic import BaseModel,Field
+import requests
+from bs4 import BeautifulSoup
+
+
+class GPT:
+    def __init__(self):
+        self.client=OpenAI()
+        self.model='gpt-5.1-chat-latest'
+        self.instructions=None
+        self.tools=[{'type':'web_search'}]
+        self.tools_list=[{'type':'web_search'}]
+        self.memory=[]
+
+    def _create_image_file(self,file_path):
+        with open(file_path,'rb') as f:
+            result = self.client.files.create(
+                file=f,
+                purpose='vision'
+            )
+        return result.id
+
+    def _create_text_file(self,file_path):
+        with open(file_path,'rb') as f:
+            result = self.client.files.create(
+                file=f,
+                purpose='user_data'
+            )
+
+        return result.id
+
+    def _stream_response(self,response,print_reponse=True):
+        resposta=''
+        for token in response:
+            if token.type=='response.output_text.delta':
+                resposta+=token.delta
+                if print_reponse == True:
+                    print(token.delta,end='')
+            
+        return resposta
+
+    def _content(self,prompt,images,text_file,url,k=3):
+        content=[{'type':'input_text','text':prompt}]
+
+        if images is not None:
+            for image in images:
+                if 'https://' in image:
+                    content.append({'type':'input_image','image_url':image})
+                else:
+                    content.append({'type':'input_image','file_id':self._create_image_file(image)})
+
+        if text_file is not None:
+
+            add_file={'type':'input_file','file_id':self._create_text_file(text_file)}
+            content.append(add_file)
+
+        if url is not None:
+
+            response = requests.get(url)
+            bs = BeautifulSoup(response.text,'html.parser')
+            context = bs.text
+
+            prompt = f'{prompt}. Responda com base no contexto: {context}'
+            content=[{'type':'input_text','text':prompt}]
+
+        if k>0:
+            self.memory.append({'role':'user','content':content})
+            return_content=(self.memory.copy())[-2*k:]
+
+        else:
+            return_content=[{'role':'user','content':content}]
+
+        return return_content
+    
+
+    def _stream_chat(self,content):
+
+        response=self.client.responses.create(
+            model=self.model,
+            instructions=self.instructions,
+            input=content,
+            tools=self.tools,
+            stream=True
+        )
+
+        return response
+
+    def _no_stream_chat(self,content):
+
+        response=self.client.responses.create(
+            model=self.model,
+            instructions=self.instructions,
+            input=content,
+            tools=self.tools,
+            stream=False
+        )
+
+        return response
+
+    def _parse_chat(self,content,classe,instructions):
+        response=self.client.responses.parse(
+            model=self.model,
+            instructions=instructions,
+            input=content,
+            tools=self.tools,
+            stream=False,
+            text_format=classe
+        )
+
+        return response
+
+
+class Chat(GPT):
+
+    def chat(self,prompt,images=None,text_file=None,url=None,k=3,print_response=True):
+
+        content=super()._content(prompt,images,text_file,url,k=k)
+        response=super()._stream_chat(content)
+        resposta=self._stream_response(response,print_response)
+
+        self.memory.append({'role':'assistant','content':resposta})
+
+        return resposta
+    
+    def chat_youtube(self,prompt,youtube_url,images=None,text_file=None,url=None,print_response=True):
+
+        transcricao=YoutubeLoader.from_youtube_url(youtube_url,language='pt').load()[0].page_content
+
+        prompt_youtube=f'Responda à pergunta, conforme o contexto. Pergunta: {prompt}. Contexto: {transcricao}'
+
+        content=super()._content(prompt_youtube,images,text_file,url,k=0)
+        response=super()._stream_chat(content)
+        resposta=self._stream_response(response,print_response)
+
+        return resposta
+    
+    def chat_codex(self,prompt,images=None,text_file=None,url=None,k=3,print_response=True):
+
+        content=super()._content(prompt,images,text_file,url,k=k)
+        response=super()._stream_chat(content,model='codex-mini-latest',tools=[])
+        resposta=self._stream_response(response,print_response)
+
+        self.memory.append({'role':'assistant','content':resposta})
+
+        return resposta
+
+    def chat_code_parse(self,prompt,images=None,text_file=None,url=None,k=3):
+
+        class CodeOutput(BaseModel):
+            mensagem:str=Field(description='mensagens gerais')
+            codigo:str=Field(description='apenas código bruto. Deve ser diretamente executável via exec() do python')
+
+        content=super()._content(prompt,images,text_file,url,k=k)
+        response=super()._parse_chat(content,model='codex-mini-latest',tools=[],classe=CodeOutput,instructions='Você retorna apenas o código como resposta')
+        resposta=response.output_parsed.model_dump()['codigo']
+
+        self.memory.append({'role':'assistant','content':resposta})
+
+        print(resposta)
+
+        return resposta
+    
+    def chat_parse(self,prompt,classe_pydatic,images=None,text_file=None,url=None):
+
+        model=classe_pydatic
+        
+        content=super()._content(prompt,images,text_file,url,k=0)
+        response=super()._parse_chat(content,classe=model,instructions=self.instructions)
+        resposta=response.output_parsed.model_dump()
+
+        # print(resposta)
+
+        return resposta
+
+    def chat_gpt5(self,prompt,images=None,text_file=None,url=None,k=3):
+
+        content=super()._content(prompt,images,text_file,url,k=k)
+        response=super()._no_stream_chat(content,model='gpt-5-mini')
+        resposta=response.output_text
+
+        self.memory.append({'role':'assistant','content':resposta})
+
+        print(resposta)
+
+        return resposta
+    
+
