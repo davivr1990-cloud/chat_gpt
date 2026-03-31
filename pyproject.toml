@@ -5,7 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "langchain>=1.2.14",
+    "langchain==0.3.25",
+    "langchain-community==0.3.25",
     "openai>=2.30.0",
     "pydantic>=2.12.5",
+    "youtube-transcript-api==1.1.0",
 ]
