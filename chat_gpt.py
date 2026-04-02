@@ -3,7 +3,11 @@ from langchain.document_loaders.youtube import YoutubeLoader
 from pydantic import BaseModel,Field
 import requests
 from bs4 import BeautifulSoup
+from pathlib import Path
+from dotenv import load_dotenv
 
+env_path = Path(__file__).parent/'.env'
+load_dotenv(env_path)
 
 class GPT:
     def __init__(self):
